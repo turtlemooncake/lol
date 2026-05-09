@@ -4,15 +4,16 @@ import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from src.data.assets import get_all_assets
+from src.data.assets import get_all_filtered_assets
 
 
 def main():
     start_time = time.time()
 
-    # 1. Pull all tickers
-    assets = get_all_assets()
-    print(f"assets length {len(assets)}")
+    # 1. Pull all assets and filter
+    assets = get_all_filtered_assets()
+
+    # 2. Download Daily Bars
 
     pass
 

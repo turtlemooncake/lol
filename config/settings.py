@@ -16,3 +16,9 @@ SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
+
+# ---------------------------------------------------------------------------
+# Data Settings
+# ---------------------------------------------------------------------------
+CANDLE_HISTORY_DAYS = 365  # Download 12 months of daily bars
+ALPACA_BAR_BATCH_SIZE = 20  # Symbols per multi-bar request

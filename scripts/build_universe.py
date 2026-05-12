@@ -5,6 +5,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from src.data.assets import get_all_filtered_assets
+from src.data.candles import download_candle_bars
 
 
 def main():
@@ -12,8 +13,10 @@ def main():
 
     # 1. Pull all assets and filter
     assets = get_all_filtered_assets()
+    assets = assets[:10]
 
     # 2. Download Daily Bars
+    download_candle_bars(assets)
 
     pass
 

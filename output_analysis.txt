@@ -1,0 +1,9 @@
+universe builder
+Batch 1/1 done
+         close  return_3m  sortino_3m  sharpe_3m  return_6m  sortino_6m  \
+symbol                                                                    
+RACE    321.22  -0.143276   -3.045236  -1.726106  -0.207393   -2.441327   
+
+        sharpe_6m  return_12m  sortino_12m  sharpe_12m  
+symbol                                                  
+RACE    -1.303759   -0.356163    -1.374132   -1.149722  

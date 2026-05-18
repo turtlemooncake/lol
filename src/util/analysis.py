@@ -21,12 +21,20 @@ def filter_penny_stocks(
     # What % of trading days met the volume threshold
     days_above = by_symbol["volume"].apply(lambda v: (v >= min_avg_volume).mean())
 
+    # symbol = "RACE"
+    # print(f"median_price: {median_price.loc[symbol]}")
+    # print(f"median_volume: {median_volume.loc[symbol]}")
+    # print(f"current_price: {current_price.loc[symbol]}")
+    # print(f"days_above: {days_above.loc[symbol]}")
+
     valid = median_price[
         (median_price >= min_price)
         & (median_volume >= min_avg_volume)
         & (days_above >= min_days_pct)
         & (current_price >= min_price)
     ].index
+
+    print(valid.to_list())
 
     return df[df.index.get_level_values("symbol").isin(valid)]
 
@@ -73,7 +81,27 @@ def returns_analysis(df: DataFrame):
         std = daily_returns_pct.groupby("symbol").std()
         results[f"sharpe_{period}"] = (mean / std) * np.sqrt(252)
 
-    return pd.DataFrame(results).dropna()
+    result_df = pd.DataFrame(results).dropna()
+
+    weight_columns = [c for c in result_df.columns if c != "close"]
+    weights = {
+        "sortino_3m": 9,
+        "sharpe_3m": 8,
+        "return_3m": 7,
+        "sortino_6m": 6,
+        "sharpe_6m": 5,
+        "return_6m": 4,
+        "sortino_12m": 3,
+        "sharpe_12m": 2,
+        "return_12m": 1,
+    }
+
+    total_weight = sum(weights.values())
+    result_df["weighted_score"] = (
+        sum(result_df[col] * weights[col] for col in weight_columns) / total_weight
+    )
+
+    return result_df.sort_values("weighted_score", ascending=False)
 
 
 def rank_stocks(df: DataFrame):

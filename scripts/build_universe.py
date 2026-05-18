@@ -16,7 +16,6 @@ def main():
     # 1. Pull all assets and filter
     assets = get_all_filtered_assets()
     assets = [asset.symbol for asset in assets]
-    # assets = ["RACE"]
 
     # 2. Download Daily Bars
     candles_df = download_candle_bars(assets)
@@ -36,8 +35,6 @@ def main():
 
     # 6. Slice only top 135 stocks
     top_stocks_df = ranked_stocks_df.head(TOP_X_STOCKS)
-
-    print(top_stocks_df)
 
     # 7. Clear previous table
 

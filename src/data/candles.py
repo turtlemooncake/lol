@@ -35,6 +35,7 @@ def download_candle_bars(assets: list[str]) -> pd.DataFrame:
                     limit=None,
                     feed=DataFeed.IEX,
                     page_token=page_token,
+                    adjustment="all",  # adjust for stock split, cash dividends, split offs
                 )
 
                 bars = DATA_CLIENT.get_stock_bars(request)

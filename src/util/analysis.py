@@ -3,12 +3,44 @@ import numpy as np
 from pandas import DataFrame
 import pandas as pd
 
+from config.settings import MIN_STOCK_PRICE, MIN_STOCK_TRADE_VOLUME, MIN_VOLUME_DAYS_PCT
+
+
+def filter_penny_stocks(
+    df: DataFrame,
+    min_price=MIN_STOCK_PRICE,
+    min_avg_volume=MIN_STOCK_TRADE_VOLUME,
+    min_days_pct=MIN_VOLUME_DAYS_PCT,
+):
+    by_symbol = df.groupby("symbol")
+
+    median_price = by_symbol["close"].median()
+    median_volume = by_symbol["volume"].median()
+    current_price = by_symbol["close"].last()  # latest close price
+
+    # What % of trading days met the volume threshold
+    days_above = by_symbol["volume"].apply(lambda v: (v >= min_avg_volume).mean())
+
+    valid = median_price[
+        (median_price >= min_price)
+        & (median_volume >= min_avg_volume)
+        & (days_above >= min_days_pct)
+        & (current_price >= min_price)
+    ].index
+
+    return df[df.index.get_level_values("symbol").isin(valid)]
+
 
 def returns_analysis(df: DataFrame):
     """
     Simple return, Sharpe ratio, Sortino ratio
     """
+    # Guard
+    if df.empty:
+        return pd.DataFrame()
+
     latest_date = df.index.get_level_values("timestamp").max()
+
     periods = {
         "3m": latest_date - relativedelta(months=3),
         "6m": latest_date - relativedelta(months=6),
@@ -41,4 +73,21 @@ def returns_analysis(df: DataFrame):
         std = daily_returns_pct.groupby("symbol").std()
         results[f"sharpe_{period}"] = (mean / std) * np.sqrt(252)
 
-    return pd.DataFrame(results)
+    return pd.DataFrame(results).dropna()
+
+
+def rank_stocks(df: DataFrame):
+    return pd.DataFrame(df).sort_values(
+        by=[
+            "sortino_3m",
+            "sharpe_3m",
+            "return_3m",
+            "sortino_6m",
+            "sharpe_6m",
+            "return_6m",
+            "sortino_12m",
+            "sharpe_12m",
+            "return_12m",
+        ],
+        ascending=False,
+    )

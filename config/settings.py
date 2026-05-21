@@ -26,3 +26,8 @@ TOP_X_STOCKS = 135
 MIN_STOCK_PRICE = 15.0
 MIN_STOCK_TRADE_VOLUME = 8_000
 MIN_VOLUME_DAYS_PCT = 0.75
+
+# ---------------------------------------------------------------------------
+# Data Settings
+# ---------------------------------------------------------------------------
+UNIVERSE_TABLE_NAME = "universe"

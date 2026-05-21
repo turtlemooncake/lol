@@ -21,11 +21,15 @@ def filter_penny_stocks(
     # What % of trading days met the volume threshold
     days_above = by_symbol["volume"].apply(lambda v: (v >= min_avg_volume).mean())
 
-    # symbol = "RACE"
-    # print(f"median_price: {median_price.loc[symbol]}")
-    # print(f"median_volume: {median_volume.loc[symbol]}")
-    # print(f"current_price: {current_price.loc[symbol]}")
-    # print(f"days_above: {days_above.loc[symbol]}")
+    """
+    DEBUG know how of df types
+    
+    symbol = "RACE"
+    print(f"median_price: {median_price.loc[symbol]}")
+    print(f"median_volume: {median_volume.loc[symbol]}")
+    print(f"current_price: {current_price.loc[symbol]}")
+    print(f"days_above: {days_above.loc[symbol]}")
+    """
 
     valid = median_price[
         (median_price >= min_price)
@@ -33,8 +37,6 @@ def filter_penny_stocks(
         & (days_above >= min_days_pct)
         & (current_price >= min_price)
     ].index
-
-    print(valid.to_list())
 
     return df[df.index.get_level_values("symbol").isin(valid)]
 

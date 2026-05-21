@@ -1,0 +1,6 @@
+universe builder
+Batch 1/1 done
+['DUOL', 'GOOG', 'RACE']
+Sucess clear_table
+Updated 3 rows in universe
+Fini with build_universe.py!

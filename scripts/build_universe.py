@@ -1,9 +1,3 @@
-import sys
-import os
-import time
-from datetime import datetime
-from zoneinfo import ZoneInfo
-
 from config.settings import TOP_X_STOCKS, UNIVERSE_TABLE_NAME
 from src.data.assets import get_all_filtered_assets
 from src.data.candles import download_candle_bars

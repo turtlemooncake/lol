@@ -50,3 +50,19 @@ def convert_df_to_universe_rows(df: DataFrame) -> list[dict]:
     )
 
     return rows
+
+
+def fetch_universe_rows(table: str) -> list[dict]:
+    try:
+
+        rows = (
+            SUPABASE_CLIENT.table(table)
+            .select("*")
+            .order("weighted_score", desc=True)
+            .execute()
+        )
+        return rows.data
+    except Exception as e:
+        print(f"Failed to fetch ${table} rows")
+
+    return []

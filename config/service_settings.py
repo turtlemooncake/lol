@@ -29,6 +29,21 @@ class ServiceSettings:
     MIN_STOCK_TRADE_VOLUME = 8_000
     MIN_VOLUME_DAYS_PCT = 0.75
 
+    # Substrings (case-insensitive) that mark an asset as a bond/fixed-income
+    # fund. Matched against the asset name to drop them from the universe.
+    BOND_FUND_NAME_KEYWORDS = (
+        "bond",
+        "treasury",
+        "fixed income",
+        "municipal",
+        "muni ",
+        "aggregate bond",
+        "income fund",
+        "t-bill",
+        "tips",
+        "fund",
+    )
+
     # ---------------------------------------------------------------------------
     # DB Settings
     # ---------------------------------------------------------------------------

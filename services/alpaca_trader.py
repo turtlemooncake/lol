@@ -28,6 +28,12 @@ class AlpacaTrader:
             print(f"Failed Alpaca get_all_assets: {e}")
             return []
 
+    def _is_bond_fund(self, asset: Asset) -> bool:
+        name = (asset.name or "").lower()
+        return any(
+            keyword in name for keyword in ServiceSettings.BOND_FUND_NAME_KEYWORDS
+        )
+
     def _filter_all_assets(self, assets: list[Asset]) -> list[Asset]:
         filtered_assets = []
         bad_assets = []
@@ -37,6 +43,10 @@ class AlpacaTrader:
                 continue
             # fractional shares
             if not asset.fractionable:
+                bad_assets.append(asset)
+                continue
+            # bond / fixed-income funds
+            if self._is_bond_fund(asset):
                 bad_assets.append(asset)
                 continue
 

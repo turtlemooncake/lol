@@ -3,14 +3,14 @@ import numpy as np
 from pandas import DataFrame
 import pandas as pd
 
-from config.settings import MIN_STOCK_PRICE, MIN_STOCK_TRADE_VOLUME, MIN_VOLUME_DAYS_PCT
+from config.service_settings import ServiceSettings
 
 
 def filter_penny_stocks(
     df: DataFrame,
-    min_price=MIN_STOCK_PRICE,
-    min_avg_volume=MIN_STOCK_TRADE_VOLUME,
-    min_days_pct=MIN_VOLUME_DAYS_PCT,
+    min_price=ServiceSettings.MIN_STOCK_PRICE,
+    min_avg_volume=ServiceSettings.MIN_STOCK_TRADE_VOLUME,
+    min_days_pct=ServiceSettings.MIN_VOLUME_DAYS_PCT,
 ):
     by_symbol = df.groupby("symbol")
 

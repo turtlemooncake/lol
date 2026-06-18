@@ -90,7 +90,7 @@ class ServiceSettings:
             "params": {
                 "rsi_period": 14,
                 "rsi_threshold": 30.0,
-                "poll_interval": 300,
+                "poll_interval": 5,  # revert back to 300s later
                 "lookback_bars": 20,
                 "universe": "buy",  # filled by build_universe job
             },

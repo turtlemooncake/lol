@@ -219,3 +219,6 @@ __marimo__/
 
 # Python Module packagei import stuff
 *.egg-info/
+
+# Claude
+.claude

@@ -85,17 +85,44 @@ def returns_analysis(df: DataFrame):
 
     result_df = pd.DataFrame(results).dropna()
 
+    # Discard stocks that don't clear minimum return thresholds
+    min_returns = {
+        "return_3m": 0.45,
+        "return_6m": 0.55,
+        "return_12m": 0.75,
+    }
+    result_df = result_df[
+        (result_df["return_3m"] >= min_returns["return_3m"])
+        & (result_df["return_6m"] >= min_returns["return_6m"])
+        & (result_df["return_12m"] >= min_returns["return_12m"])
+    ]
+
+    # Same minimum-bar principle for the risk-adjusted ratios: their scale is
+    # unrelated to simple returns, so require positive (favorable) values.
+    ratio_columns = [
+        "sortino_3m",
+        "sharpe_3m",
+        "sortino_6m",
+        "sharpe_6m",
+        "sortino_12m",
+        "sharpe_12m",
+    ]
+    result_df = result_df[(result_df[ratio_columns] > 0).all(axis=1)]
+
     weight_columns = [c for c in result_df.columns if c != "close"]
+    # Balanced momentum tilt: 6m and 12m carry the signal (roughly equal,
+    # 12m slightly ahead for robustness), 3m kept low as it's noisier/mean-reverting.
+    # Within each horizon: sortino > sharpe > return.
     weights = {
-        "sortino_3m": 9,
-        "sharpe_3m": 8,
-        "return_3m": 7,
-        "sortino_6m": 6,
-        "sharpe_6m": 5,
-        "return_6m": 4,
-        "sortino_12m": 3,
-        "sharpe_12m": 2,
-        "return_12m": 1,
+        "sortino_12m": 9,
+        "sharpe_12m": 8,
+        "return_12m": 7,
+        "sortino_6m": 8,
+        "sharpe_6m": 7,
+        "return_6m": 6,
+        "sortino_3m": 5,
+        "sharpe_3m": 4,
+        "return_3m": 3,
     }
 
     total_weight = sum(weights.values())

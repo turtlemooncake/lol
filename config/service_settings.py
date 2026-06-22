@@ -24,7 +24,7 @@ class ServiceSettings:
     # ---------------------------------------------------------------------------
     CANDLE_HISTORY_DAYS = 365  # Download 12 months of daily bars
     ALPACA_BAR_BATCH_SIZE = 20  # Symbols per multi-bar request
-    TOP_X_STOCKS = 135
+    TOP_X_STOCKS = 150
     MIN_STOCK_PRICE = 15.0
     MIN_STOCK_TRADE_VOLUME = 8_000
     MIN_VOLUME_DAYS_PCT = 0.75

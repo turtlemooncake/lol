@@ -4,6 +4,7 @@ import pandas as pd
 import yfinance as yf
 
 from config.service_settings import ServiceSettings
+from services.order_gateway import OrderIntent
 from strategies.base import Strategy
 
 log = logging.getLogger("strategy.rsi_buy")
@@ -19,6 +20,7 @@ class RsiBuy(Strategy):
         self.vix_fallback_symbol = self.params.get("vix_fallback_symbol", "VIXY")
         self.vix_percentile = self.params.get("vix_percentile", 0.70)
         self.vix_lookback = self.params.get("vix_lookback", 252)  # ~1yr of bars
+        self.order_notional = self.params.get("order_notional", 50.0)  # $/order
 
     def loop_once(self) -> None:
         # 1. Universe, already ordered by weighted_score descending.
@@ -47,7 +49,6 @@ class RsiBuy(Strategy):
             for s in symbols
             if s in rsi_by_symbol and rsi_by_symbol[s] <= self.rsi_threshold
         ]
-        self.oversold = oversold  # Step 3 turns these into OrderIntents
 
         log.info(
             "scored %d symbols, %d oversold (RSI <= %g): %s",
@@ -56,6 +57,31 @@ class RsiBuy(Strategy):
             self.rsi_threshold,
             ", ".join(f"{s}={v:.1f}" for s, v in oversold) or "none",
         )
+
+        # 5. Route each oversold name through the gateway -- the one risk-checked,
+        #    serialized, attributed path. Never touch the broker directly.
+        self._place_orders(oversold)
+
+    def _place_orders(self, oversold: list[tuple[str, float]]) -> None:
+        for symbol, rsi in oversold:
+            result = self.ctx.gateway.submit(
+                OrderIntent(
+                    strategy=self.name,
+                    symbol=symbol,
+                    notional=self.order_notional,
+                    side="buy",
+                )
+            )
+            if result.accepted:
+                log.info(
+                    "ordered %s $%.2f (rsi=%.1f) id=%s",
+                    symbol,
+                    self.order_notional,
+                    rsi,
+                    result.client_order_id,
+                )
+            else:
+                log.info("skipped %s (rsi=%.1f): %s", symbol, rsi, result.reason)
 
     def _vix_gate_open(self) -> bool:
         """Volatility regime filter.
@@ -116,7 +142,7 @@ class RsiBuy(Strategy):
         return closes if not closes.empty else None
 
     def _percentile_gate_open(self, closes: pd.Series, source: str) -> bool:
-        """True iff the latest close is in the lower `vix_percentile` of the
+        """True if the latest close is in the lower `vix_percentile` of the
         trailing `vix_lookback` window. Fail-closed on short history."""
         window = closes.iloc[-self.vix_lookback :]
         if len(window) < self.vix_lookback:

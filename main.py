@@ -3,11 +3,11 @@ import signal
 import threading
 
 from config.context import Context
-from config.service_settings import ServiceSettings
+from engine import Engine
 from services.alpaca_data import AlpacaData
 from services.alpaca_trader import AlpacaTrader
+from services.order_gateway import OrderGateway
 from services.supabase import SupabaseDB
-from strategies import REGISTRY
 
 logging.basicConfig(
     level=logging.INFO,
@@ -18,33 +18,33 @@ logger = logging.getLogger("main")
 
 
 def build_context() -> Context:
-    # Built once, shared by every strategy (only one for now).
-    return Context(
-        db=SupabaseDB(),
+    # Built once, shared by every strategy.
+    db = SupabaseDB()
+    alpacaTrader = AlpacaTrader()
+    ctx = Context(
+        db=db,
         alpacaData=AlpacaData(),
-        alpacaTrader=AlpacaTrader(),
+        alpacaTrader=alpacaTrader,
     )
+    # Wired after the services it wraps; the single path orders flow through.
+    ctx.gateway = OrderGateway(db=db, trader=alpacaTrader)
+    return ctx
 
 
 def main() -> None:
     logger.info("Trading Engine yee haw")
     ctx = build_context()
 
-    # Step 0: one strategy, one thread.
-    params = ServiceSettings.STRATEGIES["rsi_buy"]["params"]
-    strat = REGISTRY["rsi_buy"](ctx, params)
-    thread = threading.Thread(target=strat.run, name="strat-rsi_buy", daemon=True)
-    thread.start()
+    engine = Engine(ctx)
+    engine.start()
 
-    # Main thread blocks here until Ctrl-C / SIGTERM.
+    # Main thread blocks here until Ctrl-C / SIGTERM, then tears everything down.
     shutdown = threading.Event()
     signal.signal(signal.SIGINT, lambda *_: shutdown.set())
     signal.signal(signal.SIGTERM, lambda *_: shutdown.set())
     shutdown.wait()
 
-    logger.info("shutting down...")
-    strat.stop()
-    thread.join(timeout=10)
+    engine.shutdown()
 
 
 if __name__ == "__main__":

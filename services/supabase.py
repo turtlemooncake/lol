@@ -45,6 +45,27 @@ class SupabaseDB:
                 print(f"Failed to upsert_row: {e}")
         return total
 
+    # def insert_row(self, table: str, row: dict) -> dict | None:
+    #     """Insert a single row; returns the inserted row (or None on failure)."""
+    #     try:
+    #         result = self._DB_CLIENT.table(table).insert(row).execute()
+    #         return result.data[0] if result.data else None
+    #     except Exception as e:
+    #         print(f"Failed to insert_row into {table}: {e}")
+    #         return None
+
+    # def update_row(self, table: str, match: dict, values: dict) -> bool:
+    #     """Update rows in `table` matching every col=val in `match`."""
+    #     try:
+    #         query = self._DB_CLIENT.table(table).update(values)
+    #         for col, val in match.items():
+    #             query = query.eq(col, val)
+    #         query.execute()
+    #         return True
+    #     except Exception as e:
+    #         print(f"Failed to update_row in {table}: {e}")
+    #         return False
+
     def fetch_rows(self, table, order="weighted_score") -> list[dict]:
         """Fetch rows"""
         try:

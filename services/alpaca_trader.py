@@ -2,8 +2,18 @@ import threading
 from alpaca.trading.client import TradingClient
 from config.service_settings import ServiceSettings
 from alpaca.trading import Asset
-from alpaca.trading.requests import GetAssetsRequest
-from alpaca.trading.enums import AssetClass, AssetStatus
+from alpaca.trading.requests import (
+    GetAssetsRequest,
+    GetOrdersRequest,
+    MarketOrderRequest,
+)
+from alpaca.trading.enums import (
+    AssetClass,
+    AssetStatus,
+    OrderSide,
+    QueryOrderStatus,
+    TimeInForce,
+)
 
 
 class AlpacaTrader:
@@ -59,3 +69,32 @@ class AlpacaTrader:
         filtered_assets = self._filter_all_assets(all_assets)
 
         return filtered_assets
+
+    def get_open_order_count(self) -> int:
+        """Number of currently-open (unfilled/working) orders at the broker."""
+        request = GetOrdersRequest(status=QueryOrderStatus.OPEN)
+        orders = self._TRADER_CLIENT.get_orders(request)
+        return len(orders)
+
+    def get_account_cash(self) -> float:
+        """Settled cash balance on the account, in dollars."""
+        account = self._TRADER_CLIENT.get_account()
+        return float(account.cash)
+
+    def submit_order(
+        self, symbol: str, notional: float, side: str, client_order_id: str
+    ):
+        """Submit a fractional-notional market order.
+
+        Called only by OrderGateway (which serializes + risk-checks). The
+        client_order_id carries strategy/symbol attribution and makes a replay
+        idempotent: Alpaca rejects a second order with the same id.
+        """
+        request = MarketOrderRequest(
+            symbol=symbol,
+            notional=round(notional, 2),
+            side=OrderSide(side),
+            time_in_force=TimeInForce.DAY,  # required for notional orders
+            client_order_id=client_order_id,
+        )
+        return self._TRADER_CLIENT.submit_order(request)

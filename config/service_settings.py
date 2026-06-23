@@ -76,6 +76,10 @@ class ServiceSettings:
     # ---------------------------------------------------------------------------
     MAX_ORDER_NOTIONAL = 100  # hard cap on any single order, $
     MAX_DAILY_LOSS = 100  # engine pauses itself past this, $
+    MAX_OPEN_ORDERS = 10  # gateway refuses to submit past this many open broker orders
+    MIN_ACCOUNT_CASH = (
+        100  # gateway halts new orders once account cash drops below this, $
+    )
 
     # ---------------------------------------------------------------------------
     # Strategies
@@ -91,8 +95,17 @@ class ServiceSettings:
                 "rsi_period": 14,
                 "rsi_threshold": 30.0,
                 "poll_interval": 5,  # revert back to 300s later
-                "lookback_bars": 20,
                 "universe": "buy",  # filled by build_universe job
+                "order_notional": 50.0,  # $ per oversold name (must be <= MAX_ORDER_NOTIONAL)
+            },
+        },
+        # Throwaway tick-only strategy for verifying the threading model
+        # (Step 1). Disable once interleaving + single-Ctrl-C are confirmed.
+        "heartbeat": {
+            "enabled": True,
+            "capital": 0,
+            "params": {
+                "poll_interval": 3,
             },
         },
     }

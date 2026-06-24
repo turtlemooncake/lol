@@ -58,6 +58,10 @@ class ServiceSettings:
             "run_on_boot_if_stale": True,  # run immediately if overdue at startup
         },
     }
+    # How often the scheduler thread wakes to check whether any job is due.
+    # Once a day: interval_days is the real cadence, so a daily scan is plenty
+    # fine-grained. (Shutdown still interrupts the wait immediately.)
+    JOB_SCHEDULER_INTERVAL_SECONDS = 86400
 
     # ---------------------------------------------------------------------------
     # Admin API (the "side door")
@@ -70,6 +74,7 @@ class ServiceSettings:
     # Watchdog
     # ---------------------------------------------------------------------------
     HEARTBEAT_STALE_SECONDS = 600  # strategy considered wedged after this
+    WATCHDOG_INTERVAL_SECONDS = 60  # how often the watchdog scans heartbeats
 
     # ---------------------------------------------------------------------------
     # Risk (enforced by OrderGateway, global across all strategies)

@@ -70,6 +70,19 @@ class AlpacaTrader:
 
         return filtered_assets
 
+    def is_market_open(self) -> bool:
+        """Whether the US equity market is open right now, per Alpaca's clock.
+
+        Fail-closed: if the clock call errors we report closed, so a broker or
+        network blip never lets a strategy trade blind. Strategies keep beating
+        and sleeping while this returns False.
+        """
+        try:
+            return bool(self._TRADER_CLIENT.get_clock().is_open)
+        except Exception as e:
+            print(f"Failed Alpaca is_market_open: {e}")
+            return False
+
     def get_open_order_count(self) -> int:
         """Number of currently-open (unfilled/working) orders at the broker."""
         request = GetOrdersRequest(status=QueryOrderStatus.OPEN)

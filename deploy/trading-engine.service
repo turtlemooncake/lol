@@ -1,0 +1,35 @@
+# systemd unit for the trading engine (bare-metal / VM alternative to Docker).
+#
+# Install:
+#   sudo cp deploy/trading-engine.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now trading-engine
+#   journalctl -u trading-engine -f        # follow logs
+#
+# Edit User/WorkingDirectory/ExecStart paths to match the host before enabling.
+
+[Unit]
+Description=lol trading engine
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=trading
+WorkingDirectory=/opt/lol
+# Secrets live here, not in the unit file. Same keys as .env.
+EnvironmentFile=/opt/lol/.env
+ExecStart=/opt/lol/pyvenv/bin/python main.py
+
+# Supervision: relaunch on any non-clean exit (crash, OOM kill, host reboot).
+# Restarts are safe -- the scheduler resumes from job_runs and the broker
+# dedupes orders by client_order_id, so a replay never double-submits.
+Restart=always
+RestartSec=5
+
+# Give engine.shutdown() time to signal + join its threads on stop.
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

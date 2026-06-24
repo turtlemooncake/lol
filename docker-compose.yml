@@ -1,0 +1,18 @@
+# Supervised run of the trading engine.
+#
+#   docker compose up -d --build      # start (detached), rebuild on code change
+#   docker compose logs -f            # follow logs
+#   docker compose down               # stop
+#
+# restart: unless-stopped -> Docker relaunches the process on crash or host
+# reboot, but honors a deliberate `docker compose stop`. Restarts are safe: the
+# scheduler resumes its cadence from job_runs, and the broker dedupes any
+# in-flight order by its client_order_id, so nothing replays twice.
+services:
+  trading-engine:
+    build: .
+    image: lol-trading-engine
+    container_name: trading-engine
+    restart: unless-stopped
+    env_file: .env
+    stop_grace_period: 30s  # room for engine.shutdown() to join threads on SIGTERM

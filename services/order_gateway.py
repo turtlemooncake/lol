@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from config.service_settings import ServiceSettings
 from services.alpaca_trader import AlpacaTrader
+from services.discord import send_discord_message
 from services.supabase import SupabaseDB
 
 logger = logging.getLogger("order_gateway")
@@ -62,7 +63,23 @@ class OrderGateway:
     def submit(self, intent: OrderIntent) -> OrderResult:
         """Risk-check, record, and submit one order. Fully serialized."""
         with self._lock:
-            return self._submit_locked(intent)
+            result = self._submit_locked(intent)
+        # Notify *after* releasing the lock: a webhook POST is a network call,
+        # and the whole point of the gateway lock is to not block on those.
+        # Only successful broker submissions are announced (risk rejections are
+        # gating noise; they're already logged in _reject).
+        if result.accepted:
+            self._notify_submitted(intent, result)
+        return result
+
+    def _notify_submitted(self, intent: OrderIntent, result: OrderResult) -> None:
+        """Announce a submitted order to Discord (fail-soft)."""
+        send_discord_message(
+            f"✅ **Order submitted** — {intent.side.upper()} "
+            f"`{intent.symbol}` for ${intent.notional:.2f}\n"
+            f"strategy: `{intent.strategy}` · "
+            f"order id: `{result.client_order_id}`"
+        )
 
     def _submit_locked(self, intent: OrderIntent) -> OrderResult:
         cfg = ServiceSettings.STRATEGIES.get(intent.strategy)

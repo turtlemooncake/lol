@@ -13,6 +13,10 @@ class Strategy(ABC):
 
     name: str = "base"
 
+    # Trading strategies should only act while the market is open. A test-only
+    # strategy (e.g. Heartbeat) overrides this to False to keep ticking always.
+    requires_market_open: bool = True
+
     def __init__(self, ctx: Context, params: dict):
         self.ctx = ctx
         self.params = params
@@ -44,16 +48,36 @@ class Strategy(ABC):
             log.exception("setup failed - strategy no run")
             return
 
+        # Beat once before the loop so a heartbeat row exists immediately. If the
+        # very first loop_once wedges, the watchdog still has a row to age out.
+        self.ctx.db.beat(self.name, status="starting")
+
         while not self._stop.is_set():
+            # Market-open gate: when closed, skip loop_once but stay alive --
+            # still beat (or the watchdog flags us wedged) and sleep until the
+            # next check. No orders fire outside market hours.
+            if self.requires_market_open and not self.ctx.alpacaTrader.is_market_open():
+                self.ctx.db.beat(self.name, status="market_closed")
+                self._stop.wait(self.poll_interval)
+                continue
             try:
                 self.loop_once()
             except Exception:
                 log.exception("loop_once error - backing off %ds", self.error_backoff)
                 self._stop.wait(self.error_backoff)
                 continue
+            # A completed loop_once is the proof of life the watchdog watches for.
+            # A thread stuck *inside* loop_once never reaches here -> goes stale.
+            self.ctx.db.beat(self.name, status="running")
             self._stop.wait(self.poll_interval)
 
+        # Clean stop: run teardown for flush/cleanup, then mark the heartbeat
+        # 'stopped' so the health view reads a deliberate exit, not a wedge.
+        # teardown is wrapped so its failure can't skip the final beat/log.
         try:
             self.teardown()
+        except Exception:
+            log.exception("teardown failed")
         finally:
+            self.ctx.db.beat(self.name, status="stopped")
             log.info("stopped")

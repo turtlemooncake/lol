@@ -14,6 +14,9 @@ class Heartbeat(Strategy):
     """
 
     name = "heartbeat"
+    # Pure liveness probe, no orders -- tick regardless of market hours so it
+    # stays useful for verifying the threading model overnight/weekends.
+    requires_market_open = False
 
     def loop_once(self) -> None:
         log.info("tick")

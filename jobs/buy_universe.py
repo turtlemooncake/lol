@@ -1,23 +1,23 @@
+from config.context import Context
 from config.service_settings import ServiceSettings
-from services.alpaca_data import AlpacaData
-from services.alpaca_trader import AlpacaTrader
-from services.supabase import SupabaseDB
 from util.db import convert_df_to_universe_rows
 from util.universe_analysis import filter_penny_stocks, rank_stocks, returns_analysis
 
 
-def main():
-    # 0. Initialize clients
-    TRADING_CLIENT = AlpacaTrader()
-    DATA_CLIENT = AlpacaData()
-    DB_CLIENT = SupabaseDB()
+def build_universe(ctx: Context) -> str:
+    """Rebuild the universe table from a fresh ranking.
 
+    Uses the shared services off `ctx` (so the engine can run it on its
+    scheduler thread without spinning up new clients). Returns a one-line detail
+    string for the job_runs log; raises on failure so the scheduler records the
+    run as 'failed' rather than a silent 'ok'.
+    """
     # 1. Pull all assets and filter
-    assets = TRADING_CLIENT.get_all_filtered_assets()
+    assets = ctx.alpacaTrader.get_all_filtered_assets()
     assets = [asset.symbol for asset in assets]
 
     # 2. Download Daily Bars
-    raw_candles_df = DATA_CLIENT.download_candle_bars(assets)
+    raw_candles_df = ctx.alpacaData.download_candle_bars(assets)
 
     # 3. Filter out penny stocks
     candles_df = filter_penny_stocks(raw_candles_df)
@@ -28,23 +28,31 @@ def main():
     # 5. Rank stock
     ranked_stocks_df = rank_stocks(analysis_df)
 
-    # 6. Slice only top 135 stocks
+    # 6. Slice only top X stocks
     top_stocks_df = ranked_stocks_df.head(ServiceSettings.TOP_X_STOCKS)
 
     # 7. Clear previous table
-    DB_CLIENT.clear_table(ServiceSettings.UNIVERSE_TABLE_NAME)
+    ctx.db.clear_table(ServiceSettings.UNIVERSE_TABLE_NAME)
 
     # 8. Convert to rows and upload to table
     top_stocks_db_rows = convert_df_to_universe_rows(top_stocks_df)
-    rows_inserted = DB_CLIENT.upsert_rows(
+    rows_inserted = ctx.db.upsert_rows(
         ServiceSettings.UNIVERSE_TABLE_NAME, top_stocks_db_rows
     )
-    print(f"Updated {rows_inserted} rows in {ServiceSettings.UNIVERSE_TABLE_NAME}")
-
-    # 9. Fini!
-    print(f"Fini with buy_universe.py!")
+    return f"updated {rows_inserted} rows in {ServiceSettings.UNIVERSE_TABLE_NAME}"
 
 
 if __name__ == "__main__":
+    # Standalone path: build a minimal context (no gateway needed) and run once.
+    from services.alpaca_data import AlpacaData
+    from services.alpaca_trader import AlpacaTrader
+    from services.supabase import SupabaseDB
+
     print("buy universe job")
-    main()
+    ctx = Context(
+        db=SupabaseDB(),
+        alpacaData=AlpacaData(),
+        alpacaTrader=AlpacaTrader(),
+    )
+    print(build_universe(ctx))
+    print("Fini with buy_universe.py!")

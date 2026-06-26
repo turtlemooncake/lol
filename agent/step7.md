@@ -1,10 +1,11 @@
 # Step 7 — Exits, single-entry-per-name, durable trade ledger
 
-**Goal:** close the loop on the buy-only system from Steps 1–6. Three pieces: an
+**Goal:** close the loop on the buy-only system from Steps 1–6. Four pieces: an
 **exit monitor** that takes profit / time-stops open positions and pages Discord,
 a **one-position-per-name** guard so a strategy never stacks a second entry on a
-symbol it already holds, and **re-enabling the `trades` table** so every order
-the gateway touches leaves a durable, auditable row.
+symbol it already holds, **re-enabling the `trades` table** so every order the
+gateway touches leaves a durable, auditable row, and a **shared open-order-limit
+predicate** that lets `rsi_buy` skip a whole scan when there's no headroom.
 
 ## Files touched
 
@@ -13,9 +14,10 @@ the gateway touches leaves a durable, auditable row.
 | `strategies/exit_monitor.py` | **New** strategy: closes positions at +3% or after 10 days, announces to Discord |
 | `strategies/__init__.py` | Register `ExitMonitor` in `REGISTRY` |
 | `config/service_settings.py` | New `exit_monitor` entry in `STRATEGIES` (capital 0, poll 300s, +3% / 10d params) |
-| `services/alpaca_trader.py` | New `get_all_positions()`, `get_position_open_time()`, `close_position()`, `holds_symbol()` |
-| `services/order_gateway.py` | One-position-per-name reject (buys); re-enabled `_record`/`_mark`; `_reject(record=...)` flag |
+| `services/alpaca_trader.py` | New `get_all_positions()`, `get_position_open_time()`, `close_position()`, `holds_symbol()`, `at_open_order_limit()` |
+| `services/order_gateway.py` | One-position-per-name reject (buys); re-enabled `_record`/`_mark`; `_reject(record=...)` flag; throttle uses `at_open_order_limit()` |
 | `services/supabase.py` | Re-enabled `insert_row()` / `update_row()` |
+| `strategies/rsi_buy.py` | Top-of-poll short-circuit: skip the scan when `at_open_order_limit()` |
 
 ## What changed
 
@@ -85,6 +87,22 @@ All fail-soft, matching the trader's print-on-error style:
   still **logged**, just not written to `trades`. Every other rejection still
   records.
 
+### Open-order limit — one predicate, two callers
+
+- **`AlpacaTrader.at_open_order_limit()`** is now the single throttle predicate:
+  `get_open_order_count() >= MAX_OPEN_ORDERS`. It **raises** on a broker error;
+  each caller decides how to fail.
+- **Gateway** (`_submit_locked`): the per-order throttle calls it inside the
+  serialized lock, still **fail-closed** (rejects on error). This is what
+  actually enforces the cap, so every new order stays under the limit.
+- **`rsi_buy`** (top of `loop_once`): if already at the limit, log and `return`
+  *before* the universe fetch / candle download / RSI math — the gateway would
+  reject every resulting order anyway, so the whole scan is wasted work. A broker
+  error here propagates and `run()` backs off.
+- The two reads happen at different times (a deliberate TOCTOU gap): the
+  top-of-poll check is only an optimization to skip work; the gateway's locked
+  per-order check is the real guarantee.
+
 ## Verifying
 
 - **Take-profit**: with an open position above +3% unrealized, the monitor's
@@ -98,6 +116,10 @@ All fail-soft, matching the trader's print-on-error style:
 - **Trade ledger**: place a buy. A `pending` row appears in `trades` before the
   broker call, flips to `submitted` (with `broker_order_id`, `submitted_at`)
   after; a real rejection (e.g. over capital) writes a `rejected` row.
+- **Open-order limit**: with `MAX_OPEN_ORDERS` working orders already at the
+  broker, `rsi_buy`'s next tick logs `at MAX_OPEN_ORDERS (N) - skipping scan`
+  and does no universe/candle work; any order that still reaches the gateway is
+  rejected `at/over MAX_OPEN_ORDERS`.
 
 ## Notes for later steps
 
@@ -107,6 +129,6 @@ All fail-soft, matching the trader's print-on-error style:
 - `get_position_open_time` is order-history best-effort. With the `trades` table
   now live, a future step could read the opening fill from our own ledger
   instead of reconstructing it from broker order history.
-- `rsi_buy`'s `poll_interval` is still the throwaway 5s dev value; revert to 300s
-  before unattended runs (the held-symbol guard makes the fast poll cheap on
-  duplicates, but it's still a per-tick network call).
+- `rsi_buy`'s `poll_interval` is back to the production 300s. The held-symbol
+  guard and the top-of-poll open-order short-circuit both keep a tick cheap when
+  there's nothing to do, but each is still a per-tick broker call.

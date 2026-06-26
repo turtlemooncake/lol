@@ -1,8 +1,6 @@
 import threading
-from datetime import datetime
 from alpaca.trading.client import TradingClient
 from config.service_settings import ServiceSettings
-from alpaca.common.enums import Sort
 from alpaca.trading import Asset
 from alpaca.trading.models import Position
 from alpaca.trading.requests import (
@@ -21,7 +19,6 @@ from alpaca.trading.enums import (
 
 class AlpacaTrader:
     def __init__(self):
-        self._lock = threading.Lock()  # todo: remove if unused
         self._TRADER_CLIENT = TradingClient(
             ServiceSettings.ALPACA_API_KEY,
             ServiceSettings.ALPACA_SECRET_KEY,
@@ -156,37 +153,6 @@ class AlpacaTrader:
         except Exception as e:
             print(f"Failed Alpaca get_all_positions: {e}")
             return []
-
-    def get_position_open_time(self, symbol: str) -> datetime | None:
-        """Best-effort time the current position in `symbol` was opened.
-
-        Alpaca's Position carries no open date, so we reconstruct it from filled
-        order history: walking oldest-to-newest, a filled SELL means the symbol
-        went flat (reset), and the first filled BUY after that starts the current
-        position. Returns None if it can't be determined -- the caller treats that
-        as "age unknown" and skips the time-based exit.
-        """
-        request = GetOrdersRequest(
-            status=QueryOrderStatus.CLOSED,
-            symbols=[symbol],
-            limit=500,
-            direction=Sort.ASC,
-        )
-        try:
-            orders = self._TRADER_CLIENT.get_orders(request)
-        except Exception as e:
-            print(f"Failed Alpaca get_position_open_time for {symbol}: {e}")
-            return None
-
-        open_time: datetime | None = None
-        for order in orders:
-            if order.filled_at is None:
-                continue
-            if order.side == OrderSide.SELL:
-                open_time = None  # symbol went flat -- start of run resets
-            elif order.side == OrderSide.BUY and open_time is None:
-                open_time = order.filled_at
-        return open_time
 
     def close_position(self, symbol: str):
         """Liquidate the entire position in `symbol` (market order, all qty).

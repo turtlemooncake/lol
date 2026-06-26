@@ -8,22 +8,9 @@ from jobs import JOB_REGISTRY
 from services.discord import send_discord_message
 from strategies import REGISTRY
 from strategies.base import Strategy
+from util import parse_ts as _parse_ts
 
 logger = logging.getLogger("engine")
-
-
-def _parse_ts(value) -> datetime | None:
-    """Parse a Supabase timestamptz string into an aware UTC datetime."""
-    if not value:
-        return None
-    try:
-        # Supabase returns ISO-8601; tolerate a trailing 'Z' just in case.
-        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt
 
 
 class Engine:
@@ -194,7 +181,9 @@ class Engine:
             detail = fn(self.ctx)
         except Exception as e:
             logger.exception("job %s failed", name)
+            send_discord_message("@here biweekly UNIVERSE job failed")
             self.ctx.db.record_job_run(name, "failed", str(e))
+
             return
         self.ctx.db.record_job_run(name, "ok", detail)
         logger.info("job %s ok: %s", name, detail)
@@ -214,9 +203,7 @@ class Engine:
             return False
 
         strat = cls(self.ctx, cfg["params"])
-        thread = threading.Thread(
-            target=strat.run, name=f"strat-{name}", daemon=True
-        )
+        thread = threading.Thread(target=strat.run, name=f"strat-{name}", daemon=True)
         thread.start()
         self.strategies[name] = strat
         self.threads[name] = thread

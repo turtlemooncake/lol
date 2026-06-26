@@ -10,3 +10,5 @@ venv/
 local/
 agent/
 .claude/
+.DS_Store
+sql/

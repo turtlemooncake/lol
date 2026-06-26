@@ -10,7 +10,6 @@ JOB_RUNS_TABLE = "job_runs"
 
 class SupabaseDB:
     def __init__(self, client="supabase"):
-        self._lock = threading.Lock()  # todo: remove if unused
         self._DB_CLIENT = (
             create_client(ServiceSettings.SUPABASE_URL, ServiceSettings.SUPABASE_KEY)
             if client == "supabase"
@@ -138,6 +137,34 @@ class SupabaseDB:
             print(f"Failed to fetch last_job_run for {name}: {e}")
             return None
 
+    def last_entry_time(self, symbol: str) -> str | None:
+        """Submitted-at of the most recent open (buy) for `symbol`, from `trades`.
+
+        Replaces reconstructing the open from broker order history: with the
+        durable ledger live and the one-position-per-name guard, the latest
+        submitted buy *is* the current position's entry (we only buy a name when
+        flat). Returns the raw ISO timestamp, or None if there's no recorded
+        entry -- e.g. a position opened before the ledger existed -- which the
+        exit monitor treats as "age unknown" and skips the time-stop.
+        """
+        try:
+            rows = (
+                self._DB_CLIENT.table("trades")
+                .select("submitted_at")
+                .eq("symbol", symbol)
+                .eq("side", "buy")
+                .eq("status", "submitted")
+                .order("submitted_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if not rows.data:
+                return None
+            return rows.data[0].get("submitted_at")
+        except Exception as e:
+            print(f"Failed to fetch last_entry_time for {symbol}: {e}")
+            return None
+
     def fetch_rows(self, table, order="weighted_score") -> list[dict]:
         """Fetch rows"""
         try:
@@ -149,6 +176,6 @@ class SupabaseDB:
             )
             return rows.data
         except Exception as e:
-            print(f"Failed to fetch ${table} rows")
+            print(f"Failed to fetch {table} rows: {e}")
 
         return []

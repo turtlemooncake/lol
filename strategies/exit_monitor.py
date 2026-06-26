@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 from services.discord import send_discord_message
 from strategies.base import Strategy
+from util import parse_ts
 
 log = logging.getLogger("strategy.exit_monitor")
 
@@ -48,8 +49,8 @@ class ExitMonitor(Strategy):
         if plpc >= self.take_profit_pct:
             return f"take-profit (+{plpc * 100:.2f}% >= +{self.take_profit_pct * 100:.0f}%)"
 
-        # 2. Time-stop. Skip silently if the open time can't be reconstructed.
-        open_time = self.ctx.alpacaTrader.get_position_open_time(symbol)
+        # 2. Time-stop. Skip silently if there's no recorded entry to age from.
+        open_time = parse_ts(self.ctx.db.last_entry_time(symbol))
         if open_time is not None:
             days_held = (datetime.now(timezone.utc) - open_time).total_seconds() / 86400
             if days_held >= self.max_hold_days:

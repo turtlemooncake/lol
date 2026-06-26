@@ -11,7 +11,6 @@ import time
 
 class AlpacaData:
     def __init__(self):
-        self._lock = threading.Lock()  # todo: remove if unused
         self._DATA_CLIENT = StockHistoricalDataClient(
             ServiceSettings.ALPACA_API_KEY, ServiceSettings.ALPACA_SECRET_KEY
         )
@@ -29,40 +28,28 @@ class AlpacaData:
             batch = assets[i : i + ServiceSettings.ALPACA_BAR_BATCH_SIZE]
             batch_num = i // ServiceSettings.ALPACA_BAR_BATCH_SIZE + 1
 
-            page_token = None
+            try:
+                request = StockBarsRequest(
+                    symbol_or_symbols=batch,
+                    timeframe=TimeFrame.Day,
+                    start=start,
+                    end=now,
+                    limit=None,
+                    feed=DataFeed.IEX,
+                    adjustment="all",  # adjust for stock split, cash dividends, split offs
+                )
 
-            while True:
-                try:
-                    request = StockBarsRequest(
-                        symbol_or_symbols=batch,
-                        timeframe=TimeFrame.Day,
-                        start=start,
-                        end=now,
-                        limit=None,
-                        feed=DataFeed.IEX,
-                        page_token=page_token,
-                        adjustment="all",  # adjust for stock split, cash dividends, split offs
-                    )
+                bars = self._DATA_CLIENT.get_stock_bars(request)
 
-                    bars = self._DATA_CLIENT.get_stock_bars(request)
+                symbol_candles.append(bars.df)
 
-                    symbol_candles.append(bars.df)
+            except Exception as e:
+                print(
+                    f"Error at get_stock_bars. Batch {batch_num}/{total_batches}: {e}"
+                )
 
-                    page_token = None  # NOTE: did not find page token field in the python sdk response
-                    if not page_token:
-                        break
-
-                    time.sleep(0.4)
-
-                except Exception as e:
-                    print(
-                        f"Error at get_stock_bars. Batch {batch_num}/{total_batches}: {e}"
-                    )
-                    break
-
-            if batch_num % 10 == 0 or batch_num == total_batches:
-                print(f"Batch {batch_num}/{total_batches} done")
-
+            time.sleep(0.4)
+            print(f"Batch {batch_num}/{total_batches} done")
             time.sleep(0.4)
 
         return pd.concat(symbol_candles) if symbol_candles else pd.DataFrame()

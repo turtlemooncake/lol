@@ -23,6 +23,14 @@ class RsiBuy(Strategy):
         self.order_notional = self.params.get("order_notional", 50.0)  # $/order
 
     def loop_once(self) -> None:
+        # 0. No headroom under MAX_OPEN_ORDERS -> the gateway would reject every
+        #    order anyway, so skip the scan (universe fetch, candles, RSI) wholesale.
+        #    Same predicate the gateway enforces per-order; a broker error here
+        #    propagates and run() backs off.
+        if self.ctx.alpacaTrader.at_open_order_limit():
+            log.info("at MAX_OPEN_ORDERS (%d) - skipping scan", ServiceSettings.MAX_OPEN_ORDERS)
+            return
+
         # 1. Universe, already ordered by weighted_score descending.
         rows = self.ctx.db.fetch_rows(ServiceSettings.UNIVERSE_TABLE_NAME)
         symbols = [r["symbol"] for r in rows]

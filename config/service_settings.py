@@ -64,13 +64,6 @@ class ServiceSettings:
     JOB_SCHEDULER_INTERVAL_SECONDS = 86400
 
     # ---------------------------------------------------------------------------
-    # Admin API (the "side door")
-    # ---------------------------------------------------------------------------
-    ADMIN_API_ENABLED = True
-    ADMIN_API_HOST = "127.0.0.1"
-    ADMIN_API_PORT = 8765
-
-    # ---------------------------------------------------------------------------
     # Watchdog
     # ---------------------------------------------------------------------------
     HEARTBEAT_STALE_SECONDS = 600  # strategy considered wedged after this
@@ -99,15 +92,26 @@ class ServiceSettings:
             "params": {
                 "rsi_period": 14,
                 "rsi_threshold": 30.0,
-                "poll_interval": 5,  # revert back to 300s later
+                "poll_interval": 300,  # revert back to 300s later
                 "universe": "buy",  # filled by build_universe job
                 "order_notional": 50.0,  # $ per oversold name (must be <= MAX_ORDER_NOTIONAL)
+            },
+        },
+        # Watches open positions and closes them on a take-profit or time-stop.
+        # capital 0: exits don't deploy capital, so the gateway bucket is moot.
+        "exit_monitor": {
+            "enabled": True,
+            "capital": 0,
+            "params": {
+                "poll_interval": 300,  # review positions every 5 min
+                "take_profit_pct": 0.03,  # close at +3% unrealized
+                "max_hold_days": 10,  # or once held 10 calendar days
             },
         },
         # Throwaway tick-only strategy for verifying the threading model
         # (Step 1). Disable once interleaving + single-Ctrl-C are confirmed.
         "heartbeat": {
-            "enabled": True,
+            "enabled": False,
             "capital": 0,
             "params": {
                 "poll_interval": 3,

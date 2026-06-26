@@ -1,7 +1,10 @@
 import threading
+from datetime import datetime
 from alpaca.trading.client import TradingClient
 from config.service_settings import ServiceSettings
+from alpaca.common.enums import Sort
 from alpaca.trading import Asset
+from alpaca.trading.models import Position
 from alpaca.trading.requests import (
     GetAssetsRequest,
     GetOrdersRequest,
@@ -89,6 +92,16 @@ class AlpacaTrader:
         orders = self._TRADER_CLIENT.get_orders(request)
         return len(orders)
 
+    def at_open_order_limit(self) -> bool:
+        """Whether open broker orders are at/above MAX_OPEN_ORDERS.
+
+        The single throttle predicate: the gateway calls it per-order so each new
+        order stays under the cap, and rsi_buy calls it at the top of a poll to
+        skip a whole scan when there's no headroom. Raises on a broker error --
+        callers decide how to fail (the gateway rejects, the strategy backs off).
+        """
+        return self.get_open_order_count() >= ServiceSettings.MAX_OPEN_ORDERS
+
     def get_account_cash(self) -> float:
         """Settled cash balance on the account, in dollars."""
         account = self._TRADER_CLIENT.get_account()
@@ -111,3 +124,78 @@ class AlpacaTrader:
             client_order_id=client_order_id,
         )
         return self._TRADER_CLIENT.submit_order(request)
+
+    def holds_symbol(self, symbol: str) -> bool:
+        """Whether we already have exposure to `symbol` -- an open position OR a
+        working (unfilled) order.
+
+        The gateway uses this to refuse stacking a second entry on a name we're
+        already in. Checks open orders too so a still-pending buy from a previous
+        tick counts (positions only appear once filled). Fail-closed: on error we
+        report True, so a broker blip skips the buy rather than risking a double.
+        """
+        try:
+            positions = self._TRADER_CLIENT.get_all_positions()
+            if any(p.symbol == symbol for p in positions):
+                return True
+            request = GetOrdersRequest(status=QueryOrderStatus.OPEN, symbols=[symbol])
+            open_orders = self._TRADER_CLIENT.get_orders(request)
+            return len(open_orders) > 0
+        except Exception as e:
+            print(f"Failed Alpaca holds_symbol for {symbol}: {e}")
+            return True
+
+    def get_all_positions(self) -> list[Position]:
+        """All currently-open positions at the broker.
+
+        Fail-soft: returns [] on error so the exit monitor simply finds nothing
+        to act on this tick rather than crashing its loop.
+        """
+        try:
+            return self._TRADER_CLIENT.get_all_positions()
+        except Exception as e:
+            print(f"Failed Alpaca get_all_positions: {e}")
+            return []
+
+    def get_position_open_time(self, symbol: str) -> datetime | None:
+        """Best-effort time the current position in `symbol` was opened.
+
+        Alpaca's Position carries no open date, so we reconstruct it from filled
+        order history: walking oldest-to-newest, a filled SELL means the symbol
+        went flat (reset), and the first filled BUY after that starts the current
+        position. Returns None if it can't be determined -- the caller treats that
+        as "age unknown" and skips the time-based exit.
+        """
+        request = GetOrdersRequest(
+            status=QueryOrderStatus.CLOSED,
+            symbols=[symbol],
+            limit=500,
+            direction=Sort.ASC,
+        )
+        try:
+            orders = self._TRADER_CLIENT.get_orders(request)
+        except Exception as e:
+            print(f"Failed Alpaca get_position_open_time for {symbol}: {e}")
+            return None
+
+        open_time: datetime | None = None
+        for order in orders:
+            if order.filled_at is None:
+                continue
+            if order.side == OrderSide.SELL:
+                open_time = None  # symbol went flat -- start of run resets
+            elif order.side == OrderSide.BUY and open_time is None:
+                open_time = order.filled_at
+        return open_time
+
+    def close_position(self, symbol: str):
+        """Liquidate the entire position in `symbol` (market order, all qty).
+
+        Fail-soft: returns the closing Order, or None on error so a broker blip
+        doesn't crash the exit monitor -- it retries on the next tick.
+        """
+        try:
+            return self._TRADER_CLIENT.close_position(symbol)
+        except Exception as e:
+            print(f"Failed Alpaca close_position for {symbol}: {e}")
+            return None

@@ -50,6 +50,7 @@ class OrderGateway:
     """
 
     TRADES_TABLE = "trades"
+    ALREADY_HELD_REASON = "already holding symbol (or open order exists)"
 
     def __init__(self, db: SupabaseDB, trader: AlpacaTrader):
         self.db = db
@@ -106,6 +107,17 @@ class OrderGateway:
                 f"(${deployed + intent.notional:.2f} > ${capital})",
             )
 
+        # One position per name: don't stack a second entry on a symbol we
+        # already hold (or have a working order for). Buys only -- a sell is
+        # risk-reducing, never duplicating. Network call inside the lock, and
+        # holds_symbol is fail-closed (reports held on error), so a blip skips
+        # the buy rather than risking a double entry.
+        if intent.side == "buy" and self.trader.holds_symbol(intent.symbol):
+            # Not recorded: rsi_buy re-scans the same oversold names every tick,
+            # so this fires repeatedly for held names -- it's expected gating,
+            # not an audit-worthy block. Logged only.
+            return self._reject(intent, self.ALREADY_HELD_REASON, record=False)
+
         # Cash floor: halt new orders once the account is nearly out of cash.
         # Network call, inside the lock, fail-closed like the throttle below.
         try:
@@ -123,19 +135,18 @@ class OrderGateway:
         # Checked last (it's a network call) and inside the lock, so concurrent
         # submits can't race past the cap. Fail-closed if the broker errors.
         try:
-            open_orders = self.trader.get_open_order_count()
+            at_limit = self.trader.at_open_order_limit()
         except Exception as e:
             return self._reject(intent, f"open-order check failed: {e}")
-        if open_orders >= ServiceSettings.MAX_OPEN_ORDERS:
+        if at_limit:
             return self._reject(
                 intent,
-                f"over MAX_OPEN_ORDERS "
-                f"({open_orders} >= {ServiceSettings.MAX_OPEN_ORDERS})",
+                f"at/over MAX_OPEN_ORDERS ({ServiceSettings.MAX_OPEN_ORDERS})",
             )
 
         # Attribution id, then record-before-submit.
         client_order_id = self._make_client_order_id(intent)
-        # self._record(intent, client_order_id, status="pending")
+        self._record(intent, client_order_id, status="pending")
 
         try:
             order = self.trader.submit_order(
@@ -164,11 +175,15 @@ class OrderGateway:
     def _make_client_order_id(self, intent: OrderIntent) -> str:
         return f"{intent.strategy}__{intent.symbol}__{uuid.uuid4().hex[:12]}"
 
-    def _reject(self, intent: OrderIntent, reason: str) -> OrderResult:
-        # Rejected intents are still recorded -- a safety chokepoint wants the
-        # audit trail of what it blocked.
+    def _reject(
+        self, intent: OrderIntent, reason: str, record: bool = True
+    ) -> OrderResult:
+        # Rejected intents are recorded by default -- a safety chokepoint wants
+        # the audit trail of what it blocked. record=False opts out the noisy,
+        # expected rejections (e.g. re-scanning a name we already hold).
         client_order_id = self._make_client_order_id(intent)
-        # self._record(intent, client_order_id, status="rejected", reason=reason)
+        if record:
+            self._record(intent, client_order_id, status="rejected", reason=reason)
         logger.warning(
             "rejected %s %s $%.2f: %s",
             intent.strategy,
@@ -178,25 +193,25 @@ class OrderGateway:
         )
         return OrderResult(False, reason, client_order_id)
 
-    # def _record(
-    #     self,
-    #     intent: OrderIntent,
-    #     client_order_id: str,
-    #     status: str,
-    #     reason: str = "",
-    # ) -> None:
-    #     self.db.insert_row(
-    #         self.TRADES_TABLE,
-    #         {
-    #             "client_order_id": client_order_id,
-    #             "strategy": intent.strategy,
-    #             "symbol": intent.symbol,
-    #             "side": intent.side,
-    #             "notional": intent.notional,
-    #             "status": status,
-    #             "reason": reason,
-    #         },
-    #     )
+    def _record(
+        self,
+        intent: OrderIntent,
+        client_order_id: str,
+        status: str,
+        reason: str = "",
+    ) -> None:
+        self.db.insert_row(
+            self.TRADES_TABLE,
+            {
+                "client_order_id": client_order_id,
+                "strategy": intent.strategy,
+                "symbol": intent.symbol,
+                "side": intent.side,
+                "notional": intent.notional,
+                "status": status,
+                "reason": reason,
+            },
+        )
 
     def _mark(
         self,
@@ -212,6 +227,6 @@ class OrderGateway:
             values["reason"] = reason
         if status == "submitted":
             values["submitted_at"] = datetime.now(timezone.utc).isoformat()
-        # self.db.update_row(
-        #     self.TRADES_TABLE, {"client_order_id": client_order_id}, values
-        # )
+        self.db.update_row(
+            self.TRADES_TABLE, {"client_order_id": client_order_id}, values
+        )

@@ -90,6 +90,10 @@ double-submit on replay.
 > prevents a double-submit, so restart safety holds; but until those are
 > re-enabled there's no durable `trades` row to reconcile against after a crash.
 > Re-enable them (and create the `trades` table) for full audit/recovery.
+>
+> **Update (Step 7):** this is now done — `_record`/`_mark` and
+> `insert_row`/`update_row` are re-enabled and the `trades` table is live. See
+> `agent/step7.md`.
 
 ## Verifying
 

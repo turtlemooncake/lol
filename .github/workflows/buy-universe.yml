@@ -1,0 +1,66 @@
+# Biweekly universe rebuild, hoisted out of the trading engine.
+#
+# The engine runs only during market hours, so this job can no longer live on an
+# in-process scheduler thread. GitHub Actions owns the cadence instead and
+# invokes `python run_job.py buy_universe`, which records the run to job_runs and
+# pages Discord on failure (same contract the engine's scheduler had).
+#
+# GH cron can't express "every other Saturday", so we fire every Saturday and
+# skip on odd ISO weeks -> effectively biweekly. Flip the parity check to shift
+# which Saturdays run. Times are UTC.
+name: buy_universe
+
+on:
+  schedule:
+    - cron: "0 14 * * 6" # every Saturday 14:00 UTC
+  workflow_dispatch: # manual run button (used to smoke-test the first run)
+
+# Don't let a manual run overlap a scheduled one.
+concurrency:
+  group: buy_universe
+  cancel-in-progress: false
+
+jobs:
+  build-universe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Biweekly gate (skip odd ISO weeks; manual runs always proceed)
+        id: gate
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "manual run - proceeding"
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif [ $((10#$(date -u +%V) % 2)) -eq 0 ]; then
+            echo "even ISO week - proceeding"
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "odd ISO week - skipping this Saturday"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install dependencies
+        if: steps.gate.outputs.run == 'true'
+        run: pip install --no-cache-dir -r requirements.txt
+
+      - name: Run buy_universe
+        if: steps.gate.outputs.run == 'true'
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          ALPACA_PAPER: ${{ vars.ALPACA_PAPER || 'true' }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: python run_job.py buy_universe

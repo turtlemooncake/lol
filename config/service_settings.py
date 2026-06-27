@@ -12,8 +12,6 @@ class ServiceSettings:
     ALPACA_SECRET_KEY = os.getenv("ALPACA_SECRET_KEY", "")
     ALPACA_PAPER = os.getenv("ALPACA_PAPER", "true").lower() == "true"
 
-    ALPHAVANTAGE_API_KEY = os.getenv("ALPHAVANTAGE_API_KEY", "")
-
     SUPABASE_URL = os.getenv("SUPABASE_URL", "")
     SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 
@@ -52,16 +50,15 @@ class ServiceSettings:
     # ---------------------------------------------------------------------------
     # Periodic jobs
     # ---------------------------------------------------------------------------
+    # The engine no longer runs jobs in-process; the cadence + day-of-week now
+    # live in an external scheduler (GitHub Actions cron) that invokes
+    # `python run_job.py <name>`. interval_days is kept as documentation of the
+    # intended cadence, but the cron schedule is the source of truth.
     JOBS = {
         "buy_universe": {
-            "interval_days": 14,  # your biweekly universe rebuild
-            "run_on_boot_if_stale": True,  # run immediately if overdue at startup
+            "interval_days": 14,  # biweekly universe rebuild (Saturday cron)
         },
     }
-    # How often the scheduler thread wakes to check whether any job is due.
-    # Once a day: interval_days is the real cadence, so a daily scan is plenty
-    # fine-grained. (Shutdown still interrupts the wait immediately.)
-    JOB_SCHEDULER_INTERVAL_SECONDS = 86400
 
     # ---------------------------------------------------------------------------
     # Watchdog

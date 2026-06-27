@@ -41,18 +41,5 @@ def build_universe(ctx: Context) -> str:
     )
     return f"updated {rows_inserted} rows in {ServiceSettings.UNIVERSE_TABLE_NAME}"
 
-
-if __name__ == "__main__":
-    # Standalone path: build a minimal context (no gateway needed) and run once.
-    from services.alpaca_data import AlpacaData
-    from services.alpaca_trader import AlpacaTrader
-    from services.supabase import SupabaseDB
-
-    print("buy universe job")
-    ctx = Context(
-        db=SupabaseDB(),
-        alpacaData=AlpacaData(),
-        alpacaTrader=AlpacaTrader(),
-    )
-    print(build_universe(ctx))
-    print("Fini with buy_universe.py!")
+# Run standalone via the shared runner (records job_runs + alerts on failure):
+#   python run_job.py buy_universe

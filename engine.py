@@ -1,10 +1,9 @@
 import logging
 import threading
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from config.context import Context
 from config.service_settings import ServiceSettings
-from jobs import JOB_REGISTRY
 from services.discord import send_discord_message
 from strategies import REGISTRY
 from strategies.base import Strategy
@@ -26,15 +25,13 @@ class Engine:
         self.threads: dict[str, threading.Thread] = {}
         self._watchdog_stop = threading.Event()
         self._watchdog_thread: threading.Thread | None = None
-        self._scheduler_stop = threading.Event()
-        self._scheduler_thread: threading.Thread | None = None
         # Names already paged for a current wedge. Keeps the watchdog from
         # re-alerting every scan; cleared when a strategy beats fresh again so a
         # later re-wedge pages anew.
         self._wedged_alerted: set[str] = set()
 
     def start(self) -> None:
-        """Start every enabled strategy in config, then the watchdog + scheduler."""
+        """Start every enabled strategy in config, then the watchdog."""
         for name, cfg in ServiceSettings.STRATEGIES.items():
             if not cfg.get("enabled"):
                 logger.info("strategy %s disabled - skipping", name)
@@ -42,7 +39,6 @@ class Engine:
             self.start_strategy(name)
         logger.info("started %d strategies", len(self.threads))
         self._start_watchdog()
-        self._start_scheduler()
 
     def _start_watchdog(self) -> None:
         """Launch the watchdog daemon that scans heartbeats for wedged threads."""
@@ -116,78 +112,6 @@ class Engine:
             f"last status `{status}`. Thread alive but not progressing."
         )
 
-    def _start_scheduler(self) -> None:
-        """Launch the job scheduler daemon that runs periodic jobs on schedule."""
-        if self._scheduler_thread is not None and self._scheduler_thread.is_alive():
-            return
-        self._scheduler_stop.clear()
-        self._scheduler_thread = threading.Thread(
-            target=self._job_scheduler, name="scheduler", daemon=True
-        )
-        self._scheduler_thread.start()
-        logger.info(
-            "job scheduler started (scan every %ds)",
-            ServiceSettings.JOB_SCHEDULER_INTERVAL_SECONDS,
-        )
-
-    def _job_scheduler(self) -> None:
-        """Run each configured job on its interval_days cadence, restart-safe.
-
-        Deliberately its own timer thread, not the strategy poll loop: a job
-        like buy_universe is heavy and infrequent, and must not stall a
-        strategy's tick. State lives in the job_runs table, so a restart resumes
-        the schedule instead of re-firing everything.
-
-        Scans once immediately (so an overdue job fires at boot) then every
-        JOB_SCHEDULER_INTERVAL_SECONDS. wait() returns True the instant
-        shutdown sets the event, so a day-long interval still stops promptly.
-        """
-        while True:
-            try:
-                self._check_jobs()
-            except Exception:
-                logger.exception("job scheduler scan failed")
-            if self._scheduler_stop.wait(
-                ServiceSettings.JOB_SCHEDULER_INTERVAL_SECONDS
-            ):
-                break
-
-    def _check_jobs(self) -> None:
-        now = datetime.now(timezone.utc)
-        for name, cfg in ServiceSettings.JOBS.items():
-            fn = JOB_REGISTRY.get(name)
-            if fn is None:
-                logger.warning("job %s has no JOB_REGISTRY entry - skipping", name)
-                continue
-            if self._job_due(name, cfg, now):
-                self._run_job(name, fn)
-
-    def _job_due(self, name: str, cfg: dict, now: datetime) -> bool:
-        """Due if never run (and run_on_boot_if_stale) or last run is older than
-        interval_days."""
-        last = self.ctx.db.last_job_run(name)
-        if last is None:
-            return bool(cfg.get("run_on_boot_if_stale", True))
-        ran_at = _parse_ts(last.get("ran_at"))
-        if ran_at is None:
-            return True
-        interval = timedelta(days=cfg.get("interval_days", 14))
-        return now - ran_at >= interval
-
-    def _run_job(self, name: str, fn) -> None:
-        """Run one job inline on the scheduler thread, recording ok/failed."""
-        logger.info("job %s due - running", name)
-        try:
-            detail = fn(self.ctx)
-        except Exception as e:
-            logger.exception("job %s failed", name)
-            send_discord_message("@here biweekly UNIVERSE job failed")
-            self.ctx.db.record_job_run(name, "failed", str(e))
-
-            return
-        self.ctx.db.record_job_run(name, "ok", detail)
-        logger.info("job %s ok: %s", name, detail)
-
     def start_strategy(self, name: str) -> bool:
         """Instantiate and start one strategy on its own daemon thread."""
         if name in self.threads and self.threads[name].is_alive():
@@ -228,7 +152,6 @@ class Engine:
         """Stop all strategies first, then join — one signal before any join."""
         logger.info("shutting down...")
         self._watchdog_stop.set()
-        self._scheduler_stop.set()
         for strat in self.strategies.values():
             strat.stop()
         for thread in self.threads.values():
@@ -236,9 +159,6 @@ class Engine:
         if self._watchdog_thread is not None:
             self._watchdog_thread.join(timeout=timeout)
             self._watchdog_thread = None
-        if self._scheduler_thread is not None:
-            self._scheduler_thread.join(timeout=timeout)
-            self._scheduler_thread = None
         self.strategies.clear()
         self.threads.clear()
 

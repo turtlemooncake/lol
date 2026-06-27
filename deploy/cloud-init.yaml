@@ -1,0 +1,60 @@
+#cloud-config
+# ============================================================================
+# REFERENCE ONLY — not used by the current server (that box was set up by hand;
+# see agent/step10.md). Keep this for the *next* time you provision a Hetzner VM:
+# paste its contents into the "Cloud config" / user-data box when *creating* the
+# server, and it runs once on first boot, collapsing the manual Docker + firewall
+# steps into the server-create click.
+#
+# cloud-init only runs at first boot from creation-time user-data. You cannot
+# apply it to an already-running box — for that, just run the equivalent commands
+# over SSH (which is what we did this time).
+#
+# Target: Hetzner CX22 / CAX11 (x86 or ARM — this file is arch-agnostic),
+# Ubuntu LTS. After it finishes: `ssh root@<ip>`, then deploy per deploy/README
+# (rsync code to /opt/lol, scp .env, `docker compose up -d --build`) or just run
+# `./deploy/deploy.sh root@<ip>` from your Mac.
+# ============================================================================
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - ca-certificates
+  - curl
+  - ufw
+  - rsync
+
+runcmd:
+  # --- Docker (official script: auto-detects arch, installs compose plugin) ---
+  - curl -fsSL https://get.docker.com | sh
+  - systemctl enable --now docker
+
+  # --- App directory where the code + .env land ---
+  - mkdir -p /opt/lol
+
+  # --- Firewall: SSH only inbound. The engine makes only OUTBOUND connections
+  #     (Alpaca, Supabase, Discord), and compose publishes no ports, so nothing
+  #     else needs to be open. ---
+  - ufw allow OpenSSH
+  - ufw --force enable
+
+  # --- Logs/timestamps in UTC (matches datetime.now(timezone.utc) in code) ---
+  - timedatectl set-timezone UTC
+
+  # --- OPTIONAL HARDENING: run as an unprivileged user instead of root. ---
+  # If you enable this, deploy with `deploy@<ip>` (not root@) and the app dir
+  # owner changes accordingly. Uncomment to use:
+  #
+  # - id -u deploy >/dev/null 2>&1 || useradd -m -s /bin/bash deploy
+  # - usermod -aG docker,sudo deploy
+  # - echo 'deploy ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/90-deploy
+  # - chmod 440 /etc/sudoers.d/90-deploy
+  # - mkdir -p /home/deploy/.ssh
+  # - cp /root/.ssh/authorized_keys /home/deploy/.ssh/authorized_keys
+  # - chown -R deploy:deploy /home/deploy/.ssh
+  # - chmod 700 /home/deploy/.ssh
+  # - chmod 600 /home/deploy/.ssh/authorized_keys
+  # - chown deploy:deploy /opt/lol
+
+final_message: "cloud-init done. ssh root@<ip>, then deploy per deploy/ (see step10.md)"

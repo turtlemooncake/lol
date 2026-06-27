@@ -41,14 +41,15 @@ jobs:
 
       - name: Checkout
         if: steps.gate.outputs.run == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
         if: steps.gate.outputs.run == 'true'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.10"
-          cache: pip
+          # No pip cache: this job runs biweekly, but GitHub evicts unused
+          # caches after 7 days, so a cache never survives to the next run.
 
       - name: Install dependencies
         if: steps.gate.outputs.run == 'true'

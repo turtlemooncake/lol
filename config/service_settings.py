@@ -91,7 +91,7 @@ class ServiceSettings:
                 "rsi_threshold": 30.0,
                 "poll_interval": 300,  # revert back to 300s later
                 "universe": "buy",  # filled by build_universe job
-                "order_notional": 50.0,  # $ per oversold name (must be <= MAX_ORDER_NOTIONAL)
+                "order_notional": 100.0,  # $ per oversold name (must be <= MAX_ORDER_NOTIONAL)
             },
         },
         # Watches open positions and closes them on a take-profit or time-stop.

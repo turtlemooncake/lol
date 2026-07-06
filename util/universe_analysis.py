@@ -110,19 +110,19 @@ def returns_analysis(df: DataFrame):
     result_df = result_df[(result_df[ratio_columns] > 0).all(axis=1)]
 
     weight_columns = [c for c in result_df.columns if c != "close"]
-    # Balanced momentum tilt: 6m and 12m carry the signal (roughly equal,
-    # 12m slightly ahead for robustness), 3m kept low as it's noisier/mean-reverting.
+    # Short-horizon momentum tilt: 3m carries the most signal, then 6m, then 12m
+    # (recent strength weighted highest, longer look-backs kept as confirmation).
     # Within each horizon: sortino > sharpe > return.
     weights = {
-        "sortino_12m": 9,
-        "sharpe_12m": 8,
-        "return_12m": 7,
+        "sortino_3m": 9,
+        "sharpe_3m": 8,
+        "return_3m": 7,
         "sortino_6m": 8,
         "sharpe_6m": 7,
         "return_6m": 6,
-        "sortino_3m": 5,
-        "sharpe_3m": 4,
-        "return_3m": 3,
+        "sortino_12m": 5,
+        "sharpe_12m": 4,
+        "return_12m": 3,
     }
 
     total_weight = sum(weights.values())
